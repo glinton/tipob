@@ -21,15 +21,34 @@ else:
 from enum            import Enum
 from multiprocessing import Process, Value
 
-CHUNK    = 1024  # How much of the audio frame to read
-GATHERED = False # Whether the prompted action has been completed
+###############################################
+## GPIO pin/button configuration variables ####
 BOP      = 4     # GPIO pin locations of button
 PULL     = 17    # GPIO pin locations of button
 TWIST    = 27    # GPIO pin locations of button
+###############################################
 
+#####################################
+## Game configuration variables #####
+# initial seconds between prompts
+INTERVAL = 1.5
+# seconds to speed up
+DECREMENTOR = 0.2
+# number of wins before speeding up
+WIN_SPEED = 2
+#####################################
+
+###########################
+## Non configurable vars ##
+bgSwap    = False
+bgSound   = None
+write_api = None
+gathered  = False # Whether the prompted action has been completed
+chunk     = 1024  # How much of the audio frame to read
+###########################
 
 def interrupted(signum, frame):
-    if not GATHERED:
+    if not gathered:
         raise Exception()
 
 signal.signal(signal.SIGALRM, interrupted)
@@ -72,11 +91,11 @@ getch = _Getch()
 
 def playAudio(f, stream, num, stop):
     for x in range(0, num):
-        data = f.readframes(CHUNK)
+        data = f.readframes(chunk)
 
         while data:
             stream.write(data)
-            data = f.readframes(CHUNK)
+            data = f.readframes(chunk)
 
         f.rewind()
 
@@ -113,30 +132,30 @@ class Prompt(Enum):
 
 # getCH gets user input from the keyboard
 def getCH():
-    global GATHERED
+    global gathered
 
     signal.alarm(2)
     try:
         ch = getch()
-        GATHERED = True
+        gathered = True
         return ch
     except:
         return "1"
 
 # getGpioCH gets user input from rpi buttons
 def getGpioCH():
-    global GATHERED
+    global gathered
 
     try:
         while True:
             if gpio.input(BOP):
-                GATHERED = True
+                gathered = True
                 return "b"
             elif gpio.input(PULL):
-                GATHERED = True
+                gathered = True
                 return "p"
             elif gpio.input(TWIST):
-                GATHERED = True
+                gathered = True
                 return "t"
 
     except:
@@ -148,13 +167,12 @@ def record(prompt, time):
     except:
         return True
 
-
 def prompt(promptName):
     t = playBackgroundSound('./audio/prompt/'+promptName+'.wav', 1)
     start = time.time()
 
-    global GATHERED
-    GATHERED = False
+    global gathered
+    gathered = False
 
     if getCH() == promptName[0].lower():
         t.join()
@@ -168,77 +186,100 @@ def prompt(promptName):
     t.join()
     return False
 
-# starting - press button (key) to begin
-print("Press enter to begin")
-
-# wait for user to start
-input()
-
-# initial seconds between prompts
-interval = 1.5
-# seconds to speed up
-decrementor = 0.2
-# number of wins before speeding up
-winSpeed = 2
-
 # rpi gpio button setup
-try:
+def setupPi():
     gpio.setmode(gpio.BCM)
     gpio.setup(BOP, gpio.IN, pull_up_down=gpio.PUD_DOWN)
     gpio.setup(PULL, gpio.IN, pull_up_down=gpio.PUD_DOWN)
     gpio.setup(TWIST, gpio.IN, pull_up_down=gpio.PUD_DOWN)
-except:
-    print()
-finally:
-    try:
-        gpio.cleanup()
-    except:
-        print()
+
+
+def startGame():
+    # todo: play bop-it sound to prompt user to start game (pi version is headless)?
+
+    # starting - press button (key) to begin
+    print("Press enter to begin")
+
+    # wait for user to start
+    # todo: won't work on pi with buttons
+    input()
 
 # start background music
-bgSwap = False
-bgSound = threading.Thread(target=playSound, args=['./audio/filler/' + random.choice(os.listdir("./audio/filler/")), 99, lambda: bgSwap])
-bgSound.start()
+def startBackgroundMusic():
+    global bgSwap, bgSound
+    bgSwap = False
+    bgSound = threading.Thread(target=playSound, args=['./audio/filler/' + random.choice(os.listdir("./audio/filler/")), 99, lambda: bgSwap])
+    bgSound.start()
 
-try:
-    token = "$MYTOKEN"
-    org = "my-org"
-    client = InfluxDBClient(url="http://localhost:8086", token=token, org=org)
-    write_api = client.write_api()
-except:
-    write_api = lambda: True
-
-win = True
-wins = 0
-while win:
-    time.sleep(interval)
-
-    # random prompt actions
-    win = prompt(Prompt(random.randrange(3)).name)
-    wins += 1
-
-    if win:
-        if wins % winSpeed == 0:
-            if interval >= 0.2:
-                interval-=decrementor
-
-        # change background every 5 rounds
-        if wins % 5 == 0:
-            # start new sound
-            bgSwap = True
-            bgSound.join()
-            bgSwap = False
-            bgSound = threading.Thread(target=playSound, args=['./audio/filler/' + random.choice(os.listdir("./audio/filler/")), 99, lambda: bgSwap])
-            bgSound.start()
-
-if not win:
-    # end background sound
+# end background music
+def endBackgroundMusic():
+    global bgSwap, bgSound
     bgSwap = True
     bgSound.join()
 
-    # play random failure sound
-    rand_file = random.choice(os.listdir("./audio/fail"))
-    playSound("./audio/fail/" + rand_file, 1, lambda: False)
+def setupInflux():
+    global write_api
+    try:
+        token = "$MYTOKEN"
+        org = "my-org"
+        client = InfluxDBClient(url="http://localhost:8086", token=token, org=org)
+        write_api = client.write_api()
+    except:
+        write_api = lambda: True
 
-print("You succeeded", wins-1, "times!")
-# success or fail - record to influx
+def startGameLoop():
+    global INTERVAL, DECREMENTOR, WIN_SPEED
+
+    win = True
+    wins = 0
+    while win:
+        time.sleep(INTERVAL)
+
+        # random prompt actions
+        win = prompt(Prompt(random.randrange(3)).name)
+        wins += 1
+
+        if win:
+            if wins % WIN_SPEED == 0:
+                if INTERVAL >= 0.2:
+                    INTERVAL-=DECREMENTOR
+
+            # change background every 5 rounds
+            if wins % 5 == 0:
+                endBackgroundMusic()
+                startBackgroundMusic()
+
+    if not win:
+        endBackgroundMusic()
+
+        # play random failure sound
+        rand_file = random.choice(os.listdir("./audio/fail"))
+        playSound("./audio/fail/" + rand_file, 1, lambda: False)
+
+    print("You succeeded", wins-1, "times!")
+
+startPi = False
+recordInflux = False
+
+def main():
+    # Setup gpio/pi buttons
+    if startPi:
+        try:
+            setupPi()
+        except:
+            True
+        finally:
+            gpio.cleanup()
+    
+    if recordInflux:
+        setupInflux()
+
+    # Prompt for start
+    startGame()
+
+    startBackgroundMusic()
+
+    startGameLoop()
+
+if __name__ == "__main__":
+    main()
