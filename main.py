@@ -3,21 +3,30 @@
 
 import os
 import pyaudio
-import signal
 import random
+import signal
 import sys
 import time
+import timeit
 import threading
 import wave
-import timeit
-from influxdb_client import InfluxDBClient
+
+if False:
+    import RPi.GPIO as gpio
+    from influxdb_client import InfluxDBClient
+else:
+    gpio = lambda: True
+    InfluxDBClient = lambda: True
 
 from enum            import Enum
 from multiprocessing import Process, Value
-from random          import randrange
 
-CHUNK = 1024
-GATHERED = False
+CHUNK    = 1024  # How much of the audio frame to read
+GATHERED = False # Whether the prompted action has been completed
+BOP      = 4     # GPIO pin locations of button
+PULL     = 17    # GPIO pin locations of button
+TWIST    = 27    # GPIO pin locations of button
+
 
 def interrupted(signum, frame):
     if not GATHERED:
@@ -114,6 +123,32 @@ def getCH():
     except:
         return "1"
 
+# getGpioCH gets user input from rpi buttons
+def getGpioCH():
+    global GATHERED
+
+    try:
+        while True:
+            if gpio.input(BOP):
+                GATHERED = True
+                return "b"
+            elif gpio.input(PULL):
+                GATHERED = True
+                return "p"
+            elif gpio.input(TWIST):
+                GATHERED = True
+                return "t"
+
+    except:
+        return "1"
+
+def record(prompt, time):
+    try:
+        write_api.write("tipob", "my-org", ["tipob,reaction=" + promptName.lower() + " reaction_time=" + reaction_time])
+    except:
+        return True
+
+
 def prompt(promptName):
     t = playBackgroundSound('./audio/prompt/'+promptName+'.wav', 1)
     start = time.time()
@@ -123,9 +158,9 @@ def prompt(promptName):
 
     if getCH() == promptName[0].lower():
         t.join()
-        end = time.time() 
-        reaction_time = str(end - start)
-        write_api.write("tipob", "my-org", ["tipob,reaction=" + promptName[0].lower() + " reaction_time=" + reaction_time])
+
+        # todo: thread
+        record(promptName.lower(), str(time.time() - start))
 
         playSound('./audio/success/'+promptName+'.wav', 1, lambda: False)
         return True
@@ -146,42 +181,57 @@ decrementor = 0.2
 # number of wins before speeding up
 winSpeed = 2
 
+# rpi gpio button setup
+try:
+    gpio.setmode(gpio.BCM)
+    gpio.setup(BOP, gpio.IN, pull_up_down=gpio.PUD_DOWN)
+    gpio.setup(PULL, gpio.IN, pull_up_down=gpio.PUD_DOWN)
+    gpio.setup(TWIST, gpio.IN, pull_up_down=gpio.PUD_DOWN)
+except:
+    print()
+finally:
+    try:
+        gpio.cleanup()
+    except:
+        print()
+
 # start background music
 bgSwap = False
-rand_background = random.choice(os.listdir("./audio/filler/"))
-bgSound = threading.Thread(target=playSound, args=['./audio/filler/' + rand_background , 99, lambda: bgSwap])
+bgSound = threading.Thread(target=playSound, args=['./audio/filler/' + random.choice(os.listdir("./audio/filler/")), 99, lambda: bgSwap])
 bgSound.start()
 
-win = True
-wins = 0
-while win:
-    # speed up the game
-    if win == True and wins % winSpeed == 0:
-        if interval >= 0.2:
-            interval-=decrementor
-
-    time.sleep(interval)
+try:
     token = "$MYTOKEN"
     org = "my-org"
     client = InfluxDBClient(url="http://localhost:8086", token=token, org=org)
     write_api = client.write_api()
+except:
+    write_api = lambda: True
+
+win = True
+wins = 0
+while win:
+    time.sleep(interval)
 
     # random prompt actions
-    win = prompt(Prompt(randrange(3)).name)
+    win = prompt(Prompt(random.randrange(3)).name)
     wins += 1
 
-    # change background every 5 rounds
-    if win == True and wins % 5 == 0:
-        # start new sound
-        bgSwap = True
-        bgSound.join()
-        bgSwap = False
+    if win:
+        if wins % winSpeed == 0:
+            if interval >= 0.2:
+                interval-=decrementor
 
-        rand_background = random.choice(os.listdir("./audio/filler/"))
-        bgSound = threading.Thread(target=playSound, args=['./audio/filler/' + rand_background, 99, lambda: bgSwap])
-        bgSound.start()
+        # change background every 5 rounds
+        if wins % 5 == 0:
+            # start new sound
+            bgSwap = True
+            bgSound.join()
+            bgSwap = False
+            bgSound = threading.Thread(target=playSound, args=['./audio/filler/' + random.choice(os.listdir("./audio/filler/")), 99, lambda: bgSwap])
+            bgSound.start()
 
-if win == False:
+if not win:
     # end background sound
     bgSwap = True
     bgSound.join()
