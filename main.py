@@ -6,6 +6,7 @@ import sys
 import time
 import threading
 import wave
+import timeit
 
 from enum   import Enum
 from random import randrange
@@ -93,10 +94,13 @@ class Prompt(Enum):
 
 def prompt(promptName):
     t = playBackgroundSound('./audio/prompt/'+promptName+'.wav', 1)
+    start = time.time()
 
     # todo: add timeout
     if getch() == promptName[0].lower():
         t.join()
+        end = time.time() 
+        reaction_time = (end - start)
 
         playSound('./audio/success/'+promptName+'.wav', 1, lambda: False)
         return True
