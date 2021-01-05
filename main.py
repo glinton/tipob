@@ -7,6 +7,7 @@ import time
 import threading
 import wave
 import timeit
+from influxdb_client import InfluxDBClient
 
 from enum   import Enum
 from random import randrange
@@ -100,7 +101,8 @@ def prompt(promptName):
     if getch() == promptName[0].lower():
         t.join()
         end = time.time() 
-        reaction_time = (end - start)
+        reaction_time = str(end - start)
+        write_api.write("tipob", "my-org", ["tipob,reaction=" + promptName[0].lower() + " reaction_time=" + reaction_time])
 
         playSound('./audio/success/'+promptName+'.wav', 1, lambda: False)
         return True
@@ -130,6 +132,10 @@ win = True
 wins = 0
 while win:
     time.sleep(interval)
+    token = "$MYTOKEN"
+    org = "my-org"
+    client = InfluxDBClient(url="http://localhost:8086", token=token, org=org)
+    write_api = client.write_api()
 
     # random prompt actions
     win = prompt(Prompt(randrange(3)).name)
