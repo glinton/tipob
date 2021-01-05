@@ -1,10 +1,14 @@
-#!usr/bin/env python  
-#coding=utf-8  
+#!usr/bin/env python3
+#coding=utf-8
 
-import pyaudio  
-import wave  
+import pyaudio
 import sys
 import time
+import threading
+import wave
+
+from enum   import Enum
+from random import randrange
 
 # Get single character from keyboard without pressing enter.
 class _Getch:
@@ -47,128 +51,114 @@ getch = _Getch()
 
 def playAudio(f, stream, num):
     for x in range(0, num):
+        data = f.readframes(chunk)
 
-    #read data  
-        data = f.readframes(chunk)  
-
-        #play stream  
-        while data:  
-            stream.write(data)  
-            data = f.readframes(chunk)  
+        while data:
+            stream.write(data)
+            data = f.readframes(chunk)
 
         f.rewind()
 
 
 def playSound(filename, num):
-    f = wave.open(filename,"rb")
+    f = wave.open(filename, "rb")
 
-    #instantiate PyAudio  
-    p = pyaudio.PyAudio()  
+    p = pyaudio.PyAudio()
 
-    #open stream  
-    stream = p.open(format = p.get_format_from_width(f.getsampwidth()),  
-                    channels = f.getnchannels(),  
-                    rate = f.getframerate(),  
-                    output = True)  
+    stream = p.open(format = p.get_format_from_width(f.getsampwidth()),
+                    channels = f.getnchannels(),
+                    rate = f.getframerate(),
+                    output = True)
 
-    # play 3 iterations of background audio
     playAudio(f, stream, num)
 
-    #stop stream  
-    stream.stop_stream()  
-    stream.close()  
+    #stop stream
+    stream.stop_stream()
+    stream.close()
 
-    #close PyAudio  
+    #close PyAudio
     p.terminate()
 
-def promptBop():
-    promptName = './audio/prompt/Bop It.wav'
-    # todo: thread prompt, or thread getch and run first.
-    playSound(promptName, 1)
-
-    # todo: add timeout
-    ch = getch()
-    if ch != "b":
-        # todo: randomize
-        playSound('./audio/fail/TryAgain.wav',1)
-    else:
-        playSound('./audio/success/Bopped.wav',1)
-
-def promptPull():
-    promptName = './audio/prompt/Pull It.wav'
-    playSound(promptName, 1)
-
-    # todo: add timeout
-    ch = getch()
-    if ch != "p":
-        # todo: randomize
-        playSound('./audio/fail/TryAgain.wav',1)
-    else:
-        playSound('./audio/success/Pulled.wav',1)
-
-def promptTwist():
-    promptName = './audio/prompt/Twist It.wav'
-    playSound(promptName, 1)
-
-    # todo: add timeout
-    ch = getch()
-    if ch != "t":
-        # todo: randomize
-        playSound('./audio/fail/TryAgain.wav',1)
-    else:
-        playSound('./audio/success/Twisted.wav',1)
-
-import threading
+def playBackgroundSound(filename, num):
+    BackgroundAudio(playSound(filename, num)).start()
+    # thread = BackgroundAudio(playSound(filename, num)).start()
+    # thread.start()
 
 
-# for threading, this is a class
-class BackgroundPlayer(threading.Thread):
+# For playing audio without blocking the main thread
+class BackgroundAudio(threading.Thread):
 
-    def __init__(self):
+    def __init__(self, f):
         threading.Thread.__init__(self)
         self.daemon = True
+        self.runner = f
 
     def run(self):
-        playBackground()
+        self.runner()
 
 def playBackground():
     filename1 = './audio/filler/Background-1.wav'
-    threading.Thread(target=playSound(filename1, 99), name="BackgroundMusic").start()
+    playSound(filename1,99)
+    # threading.Thread(target=playSound(filename1, 99), name="BackgroundMusic").start()
+
+class Prompt(Enum):
+    Twist = 0
+    Pull = 1
+    Bop = 2
+
+def promptRandom():
+    prompt = Prompt(randrange(3))
+
+    playSound('./audio/prompt/'+prompt.name+'.wav', 1)
+    # playBackgroundSound('./audio/prompt/'+prompt.name+'.wav', 1)
+    # BackgroundAudio(playSound('./audio/prompt/'+prompt.name+'.wav', 1)).start()
+
+    # todo: add timeout
+    if getch() == prompt.name[0].lower():
+        playSound('./audio/success/'+prompt.name+'.wav',1)
+        # playBackgroundSound('./audio/success/'+prompt.name+'.wav',1)
+        return True
+    
+    return False
+    # else:
+    #     # todo: randomize
+    #     playSound('./audio/fail/TryAgain.wav',1)
 
 
+# starting - press button (key) to begin
 print("Press enter to begin")
+
 # wait for user to start
 input()
 
 filename2 = './audio/filler/Background-2.wav'
 filename3 = './audio/filler/Background-3.wav'
-samplerate = 44100
-chunk = 1024  
+chunk = 1024
 
-thread = BackgroundPlayer()
-thread.start()
-# playBackground()
+# initial seconds between prompts
+interval = 2.0
+# seconds to speed up
+decrementor = 0.2
+# number of wins before speeding up
+winSpeed = 5
 
-# todo: fork this?
-# playSound(filename1, 3)
-time.sleep(2)
-promptPull()
+# start background music
+BackgroundAudio(playBackground).start()
 
-time.sleep(1.8)
-promptBop()
-# playSound(filename2, 2)
+# playBackgroundSound(playSound(filename2, 99))
 
-# playSound(filename3, 3)
-time.sleep(1.6)
-promptTwist()
+win = True
+i = 0
+while win:
+    time.sleep(interval)
+    win = promptRandom()
+    i += 1
+    if interval >= 0.2 and i % winSpeed == 0:
+        interval-=decrementor
 
+if win == False:
+    playSound('./audio/fail/TryAgain.wav',1)
 
-# input()
-# sys.stdin.read(1)
-
-
-# starting - press button (key) to begin
 # background audio for diminishing x seconds 2seconds -.25 seconds
 # random prompt actions
 # success or fail - record to influx
-
