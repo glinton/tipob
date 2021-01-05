@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 #coding=utf-8
 
+import os
 import pyaudio
 import signal
+import random
 import sys
 import time
 import threading
@@ -146,7 +148,8 @@ winSpeed = 5
 
 # start background music
 bgSwap = False
-bgSound = threading.Thread(target=playSound, args=['./audio/filler/Background-'+str(randrange(13)+1)+'.wav', 99, lambda: bgSwap])
+rand_background = random.choice(os.listdir("./audio/filler/"))
+bgSound = threading.Thread(target=playSound, args=['./audio/filler/' + rand_background , 99, lambda: bgSwap])
 bgSound.start()
 
 win = True
@@ -173,7 +176,8 @@ while win:
 
         playSound('./audio/ShiftGear.wav', 1, lambda: False)
 
-        bgSound = threading.Thread(target=playSound, args=['./audio/filler/Background-'+str(randrange(13)+1)+'.wav', 99, lambda: bgSwap])
+        rand_background = random.choice(os.listdir("./audio/filler/"))
+        bgSound = threading.Thread(target=playSound, args=['./audio/filler/' + rand_background, 99, lambda: bgSwap])
         bgSound.start()
 
 if win == False:
@@ -181,9 +185,9 @@ if win == False:
     bgSwap = True
     bgSound.join()
 
-    # todo: randomize failure
-    playSound('./audio/fail/TryAgain.wav', 1, lambda: False)
+    # play random failure sound
+    rand_file = random.choice(os.listdir("./audio/fail"))
+    playSound("./audio/fail/" + rand_file, 1, lambda: False)
 
 print("You succeeded", wins-1, "times!")
-
 # success or fail - record to influx
