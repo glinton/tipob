@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 #coding=utf-8
 
+import argparse
 import os
 import pyaudio
 import random
@@ -11,15 +12,23 @@ import timeit
 import threading
 import wave
 
-if False:
-    import RPi.GPIO as gpio
-    from influxdb_client import InfluxDBClient
-else:
-    gpio = lambda: True
-    InfluxDBClient = lambda: True
-
 from enum            import Enum
 from multiprocessing import Process, Value
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--pi", help="start on pi", action="store_true")
+parser.add_argument("--influx", help="record stats to influx", action="store_true")
+args = parser.parse_args()
+
+if args.influx:
+    from influxdb_client import InfluxDBClient
+else:
+    InfluxDBClient = lambda: True
+
+if args.pi:
+    import RPi.GPIO as gpio
+else:
+    gpio = lambda: True
 
 ###############################################
 ## GPIO pin/button configuration variables ####
@@ -162,10 +171,13 @@ def getGpioCH():
         return "1"
 
 def record(prompt, time):
-    try:
-        write_api.write("tipob", "my-org", ["tipob,reaction=" + promptName.lower() + " reaction_time=" + reaction_time])
-    except:
-        return True
+    if args.influx:
+        try:
+            write_api.write("tipob", "my-org", ["tipob,reaction=" + prompt + " reaction_time=" + time])
+        except:
+            print("Failed to write to influx")
+    else:
+        print("Executed", prompt, "in", time)
 
 def prompt(promptName):
     t = playBackgroundSound('./audio/prompt/'+promptName+'.wav', 1)
@@ -174,7 +186,13 @@ def prompt(promptName):
     global gathered
     gathered = False
 
-    if getCH() == promptName[0].lower():
+    ch = ""
+    if args.pi:
+        ch = getGpioCH()
+    else:
+        ch = getCH()
+
+    if ch == promptName[0].lower():
         t.join()
 
         # todo: thread
@@ -258,12 +276,9 @@ def startGameLoop():
 
     print("You succeeded", wins-1, "times!")
 
-startPi = False
-recordInflux = False
-
 def main():
     # Setup gpio/pi buttons
-    if startPi:
+    if args.pi:
         try:
             setupPi()
         except:
@@ -271,7 +286,7 @@ def main():
         finally:
             gpio.cleanup()
     
-    if recordInflux:
+    if args.influx:
         setupInflux()
 
     # Prompt for start
