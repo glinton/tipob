@@ -140,11 +140,11 @@ print("Press enter to begin")
 input()
 
 # initial seconds between prompts
-interval = 2.0
+interval = 1.5
 # seconds to speed up
 decrementor = 0.2
 # number of wins before speeding up
-winSpeed = 5
+winSpeed = 2
 
 # start background music
 bgSwap = False
@@ -155,6 +155,11 @@ bgSound.start()
 win = True
 wins = 0
 while win:
+    # speed up the game
+    if win == True and wins % winSpeed == 0:
+        if interval >= 0.2:
+            interval-=decrementor
+
     time.sleep(interval)
     token = "$MYTOKEN"
     org = "my-org"
@@ -165,16 +170,12 @@ while win:
     win = prompt(Prompt(randrange(3)).name)
     wins += 1
 
-    if win == True and wins % winSpeed == 0:
-        if interval >= 0.2:
-            interval-=decrementor
-
+    # change background every 5 rounds
+    if win == True and wins % 5 == 0:
         # start new sound
         bgSwap = True
         bgSound.join()
         bgSwap = False
-
-        playSound('./audio/ShiftGear.wav', 1, lambda: False)
 
         rand_background = random.choice(os.listdir("./audio/filler/"))
         bgSound = threading.Thread(target=playSound, args=['./audio/filler/' + rand_background, 99, lambda: bgSwap])
