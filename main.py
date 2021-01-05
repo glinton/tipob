@@ -1,7 +1,8 @@
-#!usr/bin/env python3
+#!/usr/bin/env python3
 #coding=utf-8
 
 import pyaudio
+import signal
 import sys
 import time
 import threading
@@ -9,10 +10,18 @@ import wave
 import timeit
 from influxdb_client import InfluxDBClient
 
-from enum   import Enum
-from random import randrange
+from enum            import Enum
+from multiprocessing import Process, Value
+from random          import randrange
 
 CHUNK = 1024
+GATHERED = False
+
+def interrupted(signum, frame):
+    if not GATHERED:
+        raise Exception()
+
+signal.signal(signal.SIGALRM, interrupted)
 
 # Get single character from keyboard without pressing enter.
 class _Getch:
@@ -75,11 +84,9 @@ def playSound(filename, num, stop):
 
     playAudio(f, stream, num, stop)
 
-    #stop stream
     stream.stop_stream()
     stream.close()
 
-    #close PyAudio
     p.terminate()
 
 def playBackgroundSound(filename, num):
@@ -93,12 +100,26 @@ class Prompt(Enum):
     Pull = 1
     Bop = 2
 
+# getCH gets user input from the keyboard
+def getCH():
+    global GATHERED
+
+    signal.alarm(2)
+    try:
+        ch = getch()
+        GATHERED = True
+        return ch
+    except:
+        return "1"
+
 def prompt(promptName):
     t = playBackgroundSound('./audio/prompt/'+promptName+'.wav', 1)
     start = time.time()
 
-    # todo: add timeout
-    if getch() == promptName[0].lower():
+    global GATHERED
+    GATHERED = False
+
+    if getCH() == promptName[0].lower():
         t.join()
         end = time.time() 
         reaction_time = str(end - start)
@@ -125,7 +146,7 @@ winSpeed = 5
 
 # start background music
 bgSwap = False
-bgSound = threading.Thread(target=playSound, args=['./audio/filler/Background-'+str(randrange(13))+'.wav', 99, lambda: bgSwap])
+bgSound = threading.Thread(target=playSound, args=['./audio/filler/Background-'+str(randrange(13)+1)+'.wav', 99, lambda: bgSwap])
 bgSound.start()
 
 win = True
@@ -152,7 +173,7 @@ while win:
 
         playSound('./audio/ShiftGear.wav', 1, lambda: False)
 
-        bgSound = threading.Thread(target=playSound, args=['./audio/filler/Background-'+str(randrange(11)+1)+'.wav', 99, lambda: bgSwap])
+        bgSound = threading.Thread(target=playSound, args=['./audio/filler/Background-'+str(randrange(13)+1)+'.wav', 99, lambda: bgSwap])
         bgSound.start()
 
 if win == False:
