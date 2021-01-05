@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 #coding=utf-8
 
+import os
 import pyaudio
+import random
 import signal
 import sys
 import time
@@ -18,7 +20,6 @@ else:
 
 from enum            import Enum
 from multiprocessing import Process, Value
-from random          import randrange
 
 CHUNK    = 1024  # How much of the audio frame to read
 GATHERED = False # Whether the prompted action has been completed
@@ -174,11 +175,11 @@ print("Press enter to begin")
 input()
 
 # initial seconds between prompts
-interval = 2.0
+interval = 1.5
 # seconds to speed up
 decrementor = 0.2
 # number of wins before speeding up
-winSpeed = 5
+winSpeed = 2
 
 # rpi gpio button setup
 try:
@@ -196,7 +197,7 @@ finally:
 
 # start background music
 bgSwap = False
-bgSound = threading.Thread(target=playSound, args=['./audio/filler/Background-'+str(randrange(12)+1)+'.wav', 99, lambda: bgSwap])
+bgSound = threading.Thread(target=playSound, args=['./audio/filler/' + random.choice(os.listdir("./audio/filler/")), 99, lambda: bgSwap])
 bgSound.start()
 
 try:
@@ -213,31 +214,31 @@ while win:
     time.sleep(interval)
 
     # random prompt actions
-    win = prompt(Prompt(randrange(3)).name)
+    win = prompt(Prompt(random.randrange(3)).name)
     wins += 1
 
-    if win == True and wins % winSpeed == 0:
-        if interval >= 0.2:
-            interval-=decrementor
+    if win:
+        if wins % winSpeed == 0:
+            if interval >= 0.2:
+                interval-=decrementor
 
-        # start new sound
-        bgSwap = True
-        bgSound.join()
-        bgSwap = False
+        # change background every 5 rounds
+        if wins % 5 == 0:
+            # start new sound
+            bgSwap = True
+            bgSound.join()
+            bgSwap = False
+            bgSound = threading.Thread(target=playSound, args=['./audio/filler/' + random.choice(os.listdir("./audio/filler/")), 99, lambda: bgSwap])
+            bgSound.start()
 
-        playSound('./audio/ShiftGear.wav', 1, lambda: False)
-
-        bgSound = threading.Thread(target=playSound, args=['./audio/filler/Background-'+str(randrange(12)+1)+'.wav', 99, lambda: bgSwap])
-        bgSound.start()
-
-if win == False:
+if not win:
     # end background sound
     bgSwap = True
-    bgSound.join(.05)
+    bgSound.join()
 
-    # todo: randomize failure
-    playSound('./audio/fail/TryAgain.wav', 1, lambda: False)
+    # play random failure sound
+    rand_file = random.choice(os.listdir("./audio/fail"))
+    playSound("./audio/fail/" + rand_file, 1, lambda: False)
 
 print("You succeeded", wins-1, "times!")
-
 # success or fail - record to influx
