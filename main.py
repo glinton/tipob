@@ -5,6 +5,7 @@ import argparse
 import os
 import pyaudio
 import random
+import requests
 import signal
 import sys
 import time
@@ -18,6 +19,7 @@ from multiprocessing import Process, Value
 parser = argparse.ArgumentParser()
 parser.add_argument("--pi", help="start on pi", action="store_true")
 parser.add_argument("--influx", help="record stats to influx", action="store_true")
+parser.add_argument("--bucket", help="record stats to influx", action="store_true")
 args = parser.parse_args()
 
 if args.influx:
@@ -30,12 +32,20 @@ if args.pi:
 else:
     gpio = lambda: True
 
-###############################################
-## GPIO pin/button configuration variables ####
-BOP      = 4     # GPIO pin locations of button
-PULL     = 17    # GPIO pin locations of button
-TWIST    = 27    # GPIO pin locations of button
-###############################################
+############################################
+## GPIO pin/button configuration variables #
+BOP   = 4     # GPIO pin locations of button
+PULL  = 17    # GPIO pin locations of button
+TWIST = 27    # GPIO pin locations of button
+############################################
+
+######################################
+## Influx configuration variables ####
+url   = os.environ.get('INFLUX_HOST')
+token = os.environ.get('INFLUX_TOKEN')
+org   = os.environ.get('INFLUX_ORG')
+orgID = os.environ.get('INFLUX_ORGID')
+######################################
 
 #####################################
 ## Game configuration variables #####
@@ -180,7 +190,7 @@ def record(prompt, time):
     if args.influx:
         try:
             # todo: thread
-            write_api.write("tipob", "my-org", ["tipob,reaction=" + prompt + " reaction_time=" + time])
+            write_api.write("tipob", org, ["tipob,reaction=" + prompt + " reaction_time=" + time])
         except:
             print("Failed to write to influx")
     else:
@@ -240,13 +250,31 @@ def endBackgroundMusic():
     bgSwap = True
     bgSound.join()
 
+#create a itpob bucket
+def createBucket():
+    try:
+        endpoint = url + "api/v2/buckets"
+        headers = {'Authorization': 'Token ' + token}
+        payload = {
+            "orgID": orgID,
+            "name": "tipob",
+            "description": "create a bucket",
+            "rp": "itpob",
+            "retentionRules":[
+                {
+                    "type": "expire",
+                    "everySeconds": 86400
+                }
+            ]
+        }
+        requests.post(endpoint, headers=headers, json=payload)
+    except: 
+        print("bucket creation failed")
+
 def setupInflux():
     global write_api
     try:
-        token = "$MYTOKEN"
-        org = "my-org"
-        client = InfluxDBClient(url="http://localhost:8086", token=token, org=org)
-        write_api = client.write_api()
+        write_api = InfluxDBClient(url=url, token=token, org=org).write_api()
     except:
         write_api = lambda: True
 
@@ -299,6 +327,9 @@ def main():
     
     if args.influx:
         setupInflux()
+    
+    if args.bucket:
+        createBucket()
 
     # Prompt for start
     startGame()
