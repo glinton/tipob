@@ -55,6 +55,10 @@ INTERVAL = 1.5
 DECREMENTOR = 0.2
 # number of wins before speeding up
 WIN_SPEED = 2
+# initial time before prompt times out
+promptTimeout = 0.8
+# amount prompt timeout decrements each success
+promptDecrementor = .02
 #####################################
 
 ###########################
@@ -153,7 +157,7 @@ class Prompt(Enum):
 def getCH():
     global gathered
 
-    signal.alarm(2)
+    signal.setitimer(signal.ITIMER_REAL,promptTimeout)
     try:
         ch = getch()
         gathered = True
@@ -165,6 +169,7 @@ def getCH():
 def getGpioCH():
     global gathered
 
+    signal.setitimer(signal.ITIMER_REAL,promptTimeout)
     try:
         while True:
             if gpio.input(BOP):
@@ -178,11 +183,13 @@ def getGpioCH():
                 return "t"
 
     except:
+        print("Unexpected error:", sys.exc_info()[0])
         return "1"
 
 def record(prompt, time):
     if args.influx:
         try:
+            # todo: thread
             write_api.write("tipob", org, ["tipob,reaction=" + prompt + " reaction_time=" + time])
         except:
             print("Failed to write to influx")
@@ -205,7 +212,6 @@ def prompt(promptName):
     if ch == promptName[0].lower():
         t.join()
 
-        # todo: thread
         record(promptName.lower(), str(time.time() - start))
 
         playSound('./audio/success/'+promptName+'.wav', 1, lambda: False)
@@ -221,12 +227,11 @@ def setupPi():
     gpio.setup(PULL, gpio.IN, pull_up_down=gpio.PUD_DOWN)
     gpio.setup(TWIST, gpio.IN, pull_up_down=gpio.PUD_DOWN)
 
-
 def startGame():
     # todo: play bop-it sound to prompt user to start game (pi version is headless)?
 
     # starting - press button (key) to begin
-    print("Press enter to begin")
+    print("Press enter to begin", end='')
 
     # wait for user to start
     # todo: won't work on pi with buttons
@@ -275,7 +280,7 @@ def setupInflux():
         write_api = lambda: True
 
 def startGameLoop():
-    global INTERVAL, DECREMENTOR, WIN_SPEED
+    global INTERVAL, DECREMENTOR, WIN_SPEED, promptTimeout
 
     win = True
     wins = 0
@@ -287,9 +292,15 @@ def startGameLoop():
         wins += 1
 
         if win:
+            if promptTimeout > promptDecrementor:
+                promptTimeout -= promptDecrementor
+            elif promptTimeout <= (promptDecrementor / 2):
+                # todo: play winning sound?
+                print("You've won!")
+
             if wins % WIN_SPEED == 0:
-                if INTERVAL >= 0.2:
-                    INTERVAL-=DECREMENTOR
+                if INTERVAL >= DECREMENTOR:
+                    INTERVAL -= DECREMENTOR
 
             # change background every 5 rounds
             if wins % 5 == 0:
