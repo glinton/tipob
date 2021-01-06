@@ -261,12 +261,12 @@ def createBucket():
             "description": "create a bucket",
             "rp": "itpob",
             "retentionRules":[
-            {
-            "type": "expire",
-            "everySeconds": 86400
-            }
+                {
+                    "type": "expire",
+                    "everySeconds": 86400
+                }
             ]
-            }
+        }
         requests.post(endpoint, headers=headers, json=payload)
     except: 
         print("bucket creation failed")
@@ -274,8 +274,7 @@ def createBucket():
 def setupInflux():
     global write_api
     try:
-        client = InfluxDBClient(url=url, token=token, org=org)
-        write_api = client.write_api()
+        write_api = InfluxDBClient(url=url, token=token, org=org).write_api()
     except:
         write_api = lambda: True
 
