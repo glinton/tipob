@@ -43,8 +43,8 @@ TWIST    = 27    # GPIO pin locations of button
 ## Influx configuration variables #####
 url = "https://us-west-2-1.aws.cloud2.influxdata.com/"
 token = "$MYTOKEN"
-org = "MYORG"
-orgID = "MYORGID"
+org = "$MYORG"
+orgID = "$MYORGID"
 
 #####################################
 ## Game configuration variables #####
@@ -251,7 +251,7 @@ def createBucket():
         headers = {'Authorization': 'Token ' + token}
         payload = {
             "orgID": orgID,
-            "name": "TIPOB",
+            "name": "tipob",
             "description": "create a bucket",
             "rp": "itpob",
             "retentionRules":[
