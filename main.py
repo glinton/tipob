@@ -5,13 +5,13 @@ import argparse
 import os
 import pyaudio
 import random
+import requests
 import signal
 import sys
 import time
 import timeit
 import threading
 import wave
-import requests
 
 from enum            import Enum
 from multiprocessing import Process, Value
@@ -32,19 +32,20 @@ if args.pi:
 else:
     gpio = lambda: True
 
-###############################################
-## GPIO pin/button configuration variables ####
-BOP      = 4     # GPIO pin locations of button
-PULL     = 17    # GPIO pin locations of button
-TWIST    = 27    # GPIO pin locations of button
-###############################################
+############################################
+## GPIO pin/button configuration variables #
+BOP   = 4     # GPIO pin locations of button
+PULL  = 17    # GPIO pin locations of button
+TWIST = 27    # GPIO pin locations of button
+############################################
 
-#####################################
-## Influx configuration variables #####
-url = "https://us-west-2-1.aws.cloud2.influxdata.com/"
-token = "$MYTOKEN"
-org = "$MYORG"
-orgID = "$MYORGID"
+######################################
+## Influx configuration variables ####
+url   = os.environ.get('INFLUX_HOST')
+token = os.environ.get('INFLUX_TOKEN')
+org   = os.environ.get('INFLUX_ORG')
+orgID = os.environ.get('INFLUX_ORGID')
+######################################
 
 #####################################
 ## Game configuration variables #####
